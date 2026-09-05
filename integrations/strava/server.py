@@ -18,6 +18,7 @@ CLI:
   python server.py subscribe        oppretter webhook-abonnement hos Strava (krever at /webhook er offentlig)
   python server.py subscriptions    viser eksisterende abonnement
   python server.py unsubscribe ID
+  python server.py backfill 30      henter de 30 siste aktivitetene som om de kom via webhook
 
 Miljø: STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET, STRAVA_VERIFY_TOKEN, STRAVA_PUBLIC_URL
        (f.eks. https://lyftr.tailb952f7.ts.net:8443), DATA_DIR (/app/data),
@@ -312,8 +313,20 @@ def cmd_unsubscribe(sub_id: str):
     print(status, res)
 
 
+def cmd_backfill(n: int):
+    """Henter de n siste aktivitetene og prosesserer dem som om de kom via webhook."""
+    status, acts = http("GET", f"{STRAVA_API}/athlete/activities?per_page={min(n, 200)}", token=access_token())
+    if status != 200:
+        sys.exit(f"Liste feilet: {status} {acts}")
+    for a in acts:
+        process_event({"object_type": "activity", "aspect_type": "create", "object_id": a["id"]})
+    print(f"{len(acts)} aktiviteter prosessert")
+
+
 def main():
     cmd = sys.argv[1] if len(sys.argv) > 1 else "serve"
+    if cmd == "backfill":
+        return cmd_backfill(int(sys.argv[2]) if len(sys.argv) > 2 else 30)
     if cmd == "subscribe":
         return cmd_subscribe()
     if cmd == "subscriptions":

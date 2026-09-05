@@ -559,6 +559,9 @@ def main():
         wr.write(out / "Økter" / filename, content)
     for a in garmin_only:
         filename, content = render_garmin_only(a)
+        if filename in seen:   # to Garmin-økter samme dag med samme navn
+            filename = filename[:-len(" (Garmin).md")] + f" {a['start'].strftime('%H.%M')} (Garmin).md"
+        seen.add(filename)
         wr.write(out / "Økter" / filename, content)
     # rydd: Garmin-only-note som senere fikk en Lyftr-økt
     matched_ids = {w["garmin"]["strava_id"] for w in workouts if w.get("garmin")}
