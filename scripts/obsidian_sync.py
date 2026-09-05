@@ -36,6 +36,7 @@ DEFAULT_VAULT_DIR = (
 )
 TZ = ZoneInfo("Europe/Oslo")
 MARKER = "<!-- lyftr:slutt -->"
+GARMIN_BODY = Path(os.environ.get("LYFTR_GARMIN_BODY", HOME / "lyftr" / "data" / "garmin_body.json"))  # skrives av garmin_import.py
 LBS_TO_KG = 0.45359237
 
 MANEDER = [
@@ -304,18 +305,56 @@ def render_workout(w, unit_label: str) -> tuple[str, str]:
     return filename, "\n".join(fm + [""] + body)
 
 
-def render_weight(date: dt.date, logs, to_kg: float) -> str:
+def load_garmin_body() -> dict[str, list[dict]]:
+    """Garmin-målinger gruppert per dato (YYYY-MM-DD), sortert på tid."""
+    if not GARMIN_BODY.exists():
+        return {}
+    try:
+        data = json.loads(GARMIN_BODY.read_text())
+    except (OSError, ValueError):
+        return {}
+    by_day: dict[str, list[dict]] = defaultdict(list)
+    for rec in data.values():
+        if rec.get("date"):
+            by_day[rec["date"]].append(rec)
+    for recs in by_day.values():
+        recs.sort(key=lambda r: r.get("ts", ""))
+    return by_day
+
+
+def render_weight(date: dt.date, logs, to_kg: float, garmin: list[dict] | None = None) -> str:
     last = logs[-1]
+    g = garmin[-1] if garmin else None
     fm = [
         "---",
         "type: vekt",
         f"dato: {date.isoformat()}",
         f"vekt_kg: {fmt_num(last['weight'] * to_kg, 1)}",
         f"antall_malinger: {len(logs)}",
-        "lyftr_sync: true",
-        "---",
     ]
+    if g:
+        for key, label in (("fat_pct", "fett_pct"), ("muscle_kg", "muskelmasse_kg"), ("bone_kg", "beinmasse_kg"),
+                           ("water_pct", "vann_pct"), ("bmi", "bmi"), ("visceral_fat", "visceralt_fett"),
+                           ("metabolic_age", "metabolsk_alder")):
+            if g.get(key) is not None:
+                fm.append(f"{label}: {g[key]}")
+        fm.append("kilde: Garmin")
+    fm += ["lyftr_sync: true", "---"]
     body = [f"# Vekt {norsk_dato(date)}", "", f"**{fmt_kg(last['weight'] * to_kg)}**"]
+    if g:
+        parts = []
+        if g.get("fat_pct") is not None:
+            parts.append(f"Fett {fmt_num(g['fat_pct'])} %")
+        if g.get("muscle_kg") is not None:
+            parts.append(f"Muskelmasse {fmt_kg(g['muscle_kg'])}")
+        if g.get("bone_kg") is not None:
+            parts.append(f"Beinmasse {fmt_kg(g['bone_kg'])}")
+        if g.get("water_pct") is not None:
+            parts.append(f"Vann {fmt_num(g['water_pct'])} %")
+        if g.get("bmi") is not None:
+            parts.append(f"BMI {fmt_num(g['bmi'])}")
+        if parts:
+            body.append(" · ".join(parts))
     if len(logs) > 1 or any(l["notes"] for l in logs):
         body += ["", "| Tid | Vekt | Notat |", "|---|---|---|"]
         for l in logs:
@@ -450,8 +489,10 @@ def main():
             d = t.date() if t else None
         if d:
             by_day[d].append(r)
+    garmin_by_day = load_garmin_body()
     for d, logs in sorted(by_day.items()):
-        wr.write(out / "Vekt" / f"{d.isoformat()}.md", render_weight(d, logs, to_kg))
+        wr.write(out / "Vekt" / f"{d.isoformat()}.md",
+                 render_weight(d, logs, to_kg, garmin_by_day.get(d.isoformat())))
 
     # Kosthold
     fl_cols = columns(conn, "food_logs")

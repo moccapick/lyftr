@@ -104,3 +104,4 @@ data/
 tailscale-state/
 logs/
 __pycache__/
+.venv/

@@ -43,3 +43,13 @@ python3 ~/lyftr/scripts/program_import.py "<fil>"             # oppretter progra
 ```
 Format: `# Programnavn`, `## Dag`, `- Øvelse: 4x8 @ 80 | pause 120 | notat: …`, `hvile` for hviledag.
 Passord hentes fra `LYFTR_PASSWORD` eller prompt. Øvelsesnavn er engelske (open-exercise-db).
+
+## Garmin → Lyftr (kroppsvekt) og → Obsidian (kroppssammensetning)
+`scripts/garmin_import.py` (kjøres med `.venv/bin/python`, biblioteket `garminconnect`, uoffisielt API).
+1. Engangs: `~/lyftr/.venv/bin/python ~/lyftr/scripts/garmin_import.py --login` (spør om Garmin e-post/passord/MFA, tokens i `~/.garminconnect`).
+2. Legg Lyftr-passordet i `~/.config/lyftr/env` (`LYFTR_PASSWORD=…`, filen er chmod 600).
+3. Historikk: `… garmin_import.py --all --dry-run`, deretter `… garmin_import.py --all`.
+Vekt går inn i Lyftr med Garmins tidsstempel (dedupe på minutt og dag+vekt). Fett %, muskelmasse,
+beinmasse, vann og BMI lagres i `data/garmin_body.json` og vises i Obsidian-notatene under `Vekt/`.
+Nattlig: `scripts/nightly.sh` (launchd 23:30) kjører Garmin-import og deretter Obsidian-synk. Logg: `logs/nightly.log`.
+Feilsøking: `--debug` lagrer rå Garmin-respons i `data/`.
