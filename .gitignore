@@ -97,3 +97,10 @@ mobile/.maestro/
 
 # tsc --incremental caches. Regenerated on every build; never useful in a diff.
 *.tsbuildinfo
+
+# lokalt (Daniel)
+.env
+data/
+tailscale-state/
+logs/
+__pycache__/

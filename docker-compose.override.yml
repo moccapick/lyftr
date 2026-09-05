@@ -1,0 +1,38 @@
+# Lastes automatisk av `docker compose` sammen med docker-compose.yml.
+# Legger Lyftr bak en Tailscale-node ("lyftr" i tailnettet) med gyldig HTTPS,
+# og eksponerer samtidig http://localhost:8080 lokalt på Mac-en.
+#
+# Første gang: `docker compose logs tailscale` viser en login-URL — åpne den
+# (eller sett TS_AUTHKEY i .env). Deretter: https://lyftr.<tailnet>.ts.net
+#
+# Tailscale-containeren deler nettverk med frontend (ikke omvendt), slik at
+# nginx ikke mister lytteporten når tailscale restarter.
+services:
+  backend:
+    build: ./backend
+    image: lyftr-backend:local        # bygges fra forken, ikke upstream-image
+
+  frontend:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    image: lyftr-frontend:local
+    ports: !override
+      - "127.0.0.1:${LOCAL_PORT:-8080}:80"   # kun lokal tilgang; alt annet via Tailscale
+
+  tailscale:
+    image: tailscale/tailscale:latest
+    restart: unless-stopped
+    network_mode: service:frontend    # ser nginx på 127.0.0.1:80
+    depends_on:
+      frontend:
+        condition: service_started
+    environment:
+      - TS_HOSTNAME=lyftr
+      - TS_AUTHKEY=${TS_AUTHKEY:-}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_SERVE_CONFIG=/config/serve.json
+      - TS_USERSPACE=true
+    volumes:
+      - ./tailscale-state:/var/lib/tailscale
+      - ./tailscale:/config:ro
