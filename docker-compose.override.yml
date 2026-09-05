@@ -28,11 +28,18 @@ services:
       frontend:
         condition: service_started
     environment:
-      - TS_HOSTNAME=lyftr
       - TS_AUTHKEY=${TS_AUTHKEY:-}
-      - TS_STATE_DIR=/var/lib/tailscale
-      - TS_SERVE_CONFIG=/config/serve.json
-      - TS_USERSPACE=true
     volumes:
       - ./tailscale-state:/var/lib/tailscale
-      - ./tailscale:/config:ro
+    # Egen oppstart i stedet for containerboot: containerboot avbryter `tailscale up`
+    # etter 60 s uten auth-key, restarter og lager ny login-URL hver gang. Her venter
+    # `tailscale up` til lenken i loggen er godkjent, og serve-oppsettet legges på etterpå.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        tailscaled --state=/var/lib/tailscale/tailscaled.state --tun=userspace-networking &
+        until [ -S /var/run/tailscale/tailscaled.sock ]; do sleep 0.5; done
+        tailscale up --hostname=lyftr --reset ${TS_AUTHKEY:+--authkey=$TS_AUTHKEY}
+        tailscale serve --bg --https=443 http://127.0.0.1:80
+        echo "Lyftr via Tailscale: https://$(tailscale status --json | sed -n 's/.*"DNSName": *"\([^"]*\)\.".*/\1/p' | head -1)"
+        wait

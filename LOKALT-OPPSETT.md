@@ -9,23 +9,24 @@ colima start                      # Docker-daemon (colima)
 cd ~/lyftr && docker compose up -d --build
 ```
 - Lokalt: http://localhost:8080
-- Tailscale: https://lyftr.<tailnet>.ts.net (etter login, se under)
+- Tailscale: https://lyftr.tailb952f7.ts.net (krever Tailscale på enheten)
 - Data: `./data/lyftr.db` (SQLite, WAL). Backup = kopier filen når stacken er stoppet.
 - Konfig: `.env` (ikke i git). `REGISTRATION=first-user` stenger registrering etter første bruker.
 
 ## Tailscale-login (første gang)
-Containeren restarter hvert minutt til den er logget inn, og login-URL-en byttes hver gang:
+Containeren kjører `tailscale up` uten tidsavbrudd og skriver én login-URL i loggen:
 ```bash
-docker compose logs -f tailscale | grep "login.tailscale.com"
+docker compose logs tailscale | grep "login.tailscale.com"
 ```
-Åpne siste URL og godkjenn. Alternativ: lag en auth-key på
+Åpne den og godkjenn. Alternativ: lag en auth-key på
 https://login.tailscale.com/admin/settings/keys og legg den i `TS_AUTHKEY` i `.env`.
-Etter login: sett `CORS_ORIGIN=http://localhost:8080,https://lyftr.<tailnet>.ts.net` i `.env`
-og kjør `docker compose up -d backend`.
+State ligger i `tailscale-state/`, så login overlever restart og oppdatering.
 
-Tailscale må også være installert på telefon/Mac som skal nå appen. HTTPS-sertifikat ordnes
-automatisk av `tailscale/serve.json` (krever at «HTTPS Certificates» er slått på i tailnettet:
-https://login.tailscale.com/admin/dns).
+Engangsoppsett i tailnettet: «Serve» må være aktivert (containeren skriver lenken i loggen
+hvis den mangler). HTTPS-sertifikat hentes automatisk. `CORS_ORIGIN` i `.env` må inneholde
+https-adressen; etter endring: `docker compose up -d backend`.
+
+Tailscale må være installert og innlogget på telefon/Mac som skal nå appen.
 
 ## Obsidian-speil
 `scripts/obsidian_sync.py` leser SQLite-filen og skriver markdown til
