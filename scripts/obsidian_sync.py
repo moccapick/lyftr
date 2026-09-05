@@ -32,7 +32,7 @@ from zoneinfo import ZoneInfo
 HOME = Path.home()
 DEFAULT_DB = HOME / "lyftr" / "data" / "lyftr.db"
 DEFAULT_VAULT_DIR = (
-    HOME / "Library/CloudStorage/Dropbox-Privat/Privat/Claude/Obsidian/Trening"
+    HOME / "Library/CloudStorage/Dropbox-Privat/Privat/Obsidian Privat/Trening"
 )
 TZ = ZoneInfo("Europe/Oslo")
 MARKER = "<!-- lyftr:slutt -->"

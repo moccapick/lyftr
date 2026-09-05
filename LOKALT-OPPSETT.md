@@ -30,7 +30,16 @@ Tailscale må være installert og innlogget på telefon/Mac som skal nå appen.
 
 ## Obsidian-speil
 `scripts/obsidian_sync.py` leser SQLite-filen og skriver markdown til
-`Obsidian/Trening/{Økter,Vekt,Kosthold}`. Kjøres av launchd hver kveld 23:30 og ved innlogging:
+det private vaultet `Dropbox-Privat/Privat/Obsidian Privat/Trening/{Økter,Vekt,Kosthold}` (ikke jobb-vaultet). Kjøres av launchd hver kveld 23:30 og ved innlogging:
 `~/Library/LaunchAgents/no.danieldahl.lyftr-obsidian-sync.plist`, logg i `logs/obsidian-sync.log`.
 Manuell kjøring: `python3 scripts/obsidian_sync.py [--dry-run]`.
 Tekst under `<!-- lyftr:slutt -->` i en note bevares ved neste synk.
+
+## Programimport
+Skriv programmet som markdown (se `Trening/Programmer/Eksempel - PPL.md` i det private vaultet) og kjør:
+```bash
+python3 ~/lyftr/scripts/program_import.py "<fil>" --dry-run   # slår opp øvelser, oppretter ikke
+python3 ~/lyftr/scripts/program_import.py "<fil>"             # oppretter programmet
+```
+Format: `# Programnavn`, `## Dag`, `- Øvelse: 4x8 @ 80 | pause 120 | notat: …`, `hvile` for hviledag.
+Passord hentes fra `LYFTR_PASSWORD` eller prompt. Øvelsesnavn er engelske (open-exercise-db).
