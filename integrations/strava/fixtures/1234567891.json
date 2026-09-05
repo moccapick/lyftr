@@ -1,0 +1,5 @@
+{"id": 1234567891, "name": "Styrke uten Lyftr-økt", "sport_type": "WeightTraining", "type": "WeightTraining",
+ "start_date": "2026-09-03T05:30:00Z", "start_date_local": "2026-09-03T07:30:00Z", "timezone": "(GMT+01:00) Europe/Oslo",
+ "elapsed_time": 2700, "moving_time": 2600, "distance": 0.0,
+ "average_heartrate": 109.0, "max_heartrate": 148, "calories": 290.0,
+ "device_name": "Garmin Forerunner 265", "description": "", "has_heartrate": true}

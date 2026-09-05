@@ -37,6 +37,8 @@ DEFAULT_VAULT_DIR = (
 TZ = ZoneInfo("Europe/Oslo")
 MARKER = "<!-- lyftr:slutt -->"
 GARMIN_BODY = Path(os.environ.get("LYFTR_GARMIN_BODY", HOME / "lyftr" / "data" / "garmin_body.json"))  # skrives av garmin_import.py
+STRAVA_ACTS = Path(os.environ.get("LYFTR_STRAVA_ACTS", HOME / "lyftr" / "data" / "strava_activities.json"))  # skrives av integrations/strava
+MATCH_WINDOW = dt.timedelta(hours=3)   # Garmin-økt og Lyftr-økt regnes som samme hvis start er innenfor dette
 LBS_TO_KG = 0.45359237
 
 MANEDER = [
@@ -186,6 +188,82 @@ def load_workouts(conn, user_id: int, to_kg: float):
     return workouts
 
 
+def load_strava() -> list[dict]:
+    if not STRAVA_ACTS.exists():
+        return []
+    try:
+        data = json.loads(STRAVA_ACTS.read_text())
+    except (OSError, ValueError):
+        return []
+    out = []
+    for a in data.values():
+        start = parse_dt(a.get("start_utc"))
+        if start:
+            a = dict(a)
+            a["start"] = start
+            out.append(a)
+    return sorted(out, key=lambda a: a["start"])
+
+
+def match_strava(workouts, activities) -> list[dict]:
+    """Knytter hver Strava-aktivitet til nærmeste Lyftr-økt innenfor MATCH_WINDOW.
+    Returnerer aktivitetene som ikke fant noen økt."""
+    unmatched = []
+    for a in activities:
+        best, best_delta = None, None
+        for w in workouts:
+            if not w["started"]:
+                continue
+            delta = abs(w["started"] - a["start"])
+            if delta <= MATCH_WINDOW and (best_delta is None or delta < best_delta):
+                best, best_delta = w, delta
+        if best is None:
+            unmatched.append(a)
+        elif "garmin" not in best or abs(best["started"] - best["garmin"]["start"]) > best_delta:
+            best["garmin"] = a
+    return unmatched
+
+
+def garmin_fields(a: dict) -> list[str]:
+    fm = [f"strava_id: {a['strava_id']}", f"garmin_type: {yaml_str(a.get('type') or '')}"]
+    if a.get("elapsed_s"):
+        fm.append(f"varighet_garmin_min: {round(a['elapsed_s'] / 60)}")
+    if a.get("avg_hr") is not None:
+        fm.append(f"puls_snitt: {round(a['avg_hr'])}")
+    if a.get("max_hr") is not None:
+        fm.append(f"puls_maks: {round(a['max_hr'])}")
+    if a.get("calories") is not None:
+        fm.append(f"kalorier: {round(a['calories'])}")
+    return fm
+
+
+def garmin_line(a: dict) -> str:
+    parts = []
+    if a.get("elapsed_s"):
+        parts.append(f"{round(a['elapsed_s'] / 60)} min")
+    if a.get("avg_hr") is not None:
+        parts.append(f"snittpuls {round(a['avg_hr'])}")
+    if a.get("max_hr") is not None:
+        parts.append(f"makspuls {round(a['max_hr'])}")
+    if a.get("calories") is not None:
+        parts.append(f"{round(a['calories'])} kcal")
+    src = a.get("device") or "Garmin"
+    return f"**{src} via Strava:** " + " · ".join(parts)
+
+
+def render_garmin_only(a: dict) -> tuple[str, str]:
+    """Garmin-økt uten tilhørende Lyftr-økt: egen note så ingenting går tapt."""
+    date = a["start"].date()
+    name = (a.get("name") or "Styrke").strip()
+    filename = f"{date.isoformat()} {safe_filename(name)} (Garmin).md"
+    fm = ["---", "type: trening-okt-garmin", f"dato: {date.isoformat()}",
+          f"start: {a['start'].strftime('%Y-%m-%dT%H:%M')}", f"navn: {yaml_str(name)}"] + garmin_fields(a) + \
+         ["lyftr_sync: true", "---"]
+    body = [f"# {name} – {norsk_dato(date)}", "", garmin_line(a), "",
+            "_Ingen Lyftr-økt innenfor 3 timer. Logg settene i Lyftr, så slås notatene sammen ved neste synk._"]
+    return filename, "\n".join(fm + [""] + body)
+
+
 def mark_prs(workouts):
     """PR = beste vekt eller beste e1RM for øvelsen er høyere enn i alle tidligere økter."""
     best_w: dict[str, float] = defaultdict(float)
@@ -242,9 +320,10 @@ def render_workout(w, unit_label: str) -> tuple[str, str]:
         f"ovelser: {yaml_list(ex['name'] for ex in w['exercises'])}",
         f"muskelgrupper: {yaml_list(muscles)}",
         f"pr: {yaml_list(w['prs'])}",
-        "lyftr_sync: true",
-        "---",
     ]
+    if w.get("garmin"):
+        fm += garmin_fields(w["garmin"])
+    fm += ["lyftr_sync: true", "---"]
 
     body = [f"# {name} – {norsk_dato(date)}", ""]
     meta = [f"**Start:** {started.strftime('%H:%M')}"]
@@ -256,6 +335,9 @@ def render_workout(w, unit_label: str) -> tuple[str, str]:
         prog = w["program_name"] + (f" / {w['program_day_name']}" if w["program_day_name"] else "")
         meta.append(f"**Program:** {prog}")
     body.append(" · ".join(meta))
+    if w.get("garmin"):
+        body.append("")
+        body.append(garmin_line(w["garmin"]))
     if w["prs"]:
         body.append("")
         body.append("🏆 **PR:** " + ", ".join(w["prs"]))
@@ -465,6 +547,8 @@ def main():
     # Økter
     workouts = load_workouts(conn, uid, to_kg)
     mark_prs(workouts)
+    strava = load_strava()
+    garmin_only = match_strava(workouts, strava)
     seen = set()
     for w in workouts:
         filename, content = render_workout(w, unit)
@@ -473,6 +557,15 @@ def main():
             filename = filename[:-3] + f" ({w['id']}).md"
         seen.add(filename)
         wr.write(out / "Økter" / filename, content)
+    for a in garmin_only:
+        filename, content = render_garmin_only(a)
+        wr.write(out / "Økter" / filename, content)
+    # rydd: Garmin-only-note som senere fikk en Lyftr-økt
+    matched_ids = {w["garmin"]["strava_id"] for w in workouts if w.get("garmin")}
+    for f in (out / "Økter").glob("* (Garmin).md") if (out / "Økter").exists() else []:
+        m = re.search(r"^strava_id: (\d+)$", f.read_text(encoding="utf-8"), re.M)
+        if m and int(m.group(1)) in matched_ids and not args.dry_run:
+            f.unlink()
 
     # Vekt
     wl_cols = columns(conn, "weight_logs")
@@ -515,7 +608,8 @@ def main():
 
     print(
         f"Lyftr → Obsidian ({user['email']}, enhet {unit}): "
-        f"{len(workouts)} økter, {len(by_day)} vektdager, {len(food_by_day)} kostholdsdager. "
+        f"{len(workouts)} økter ({len(strava) - len(garmin_only)} med Garmin-data, {len(garmin_only)} kun Garmin), "
+        f"{len(by_day)} vektdager, {len(food_by_day)} kostholdsdager. "
         f"{wr.written} filer skrevet, {wr.unchanged} uendret."
         + (" [dry-run]" if args.dry_run else "")
     )

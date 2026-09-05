@@ -1,0 +1,5 @@
+{"id": 1234567890, "name": "Styrke", "sport_type": "WeightTraining", "type": "WeightTraining",
+ "start_date": "2026-09-04T16:05:00Z", "start_date_local": "2026-09-04T18:05:00Z", "timezone": "(GMT+01:00) Europe/Oslo",
+ "elapsed_time": 3840, "moving_time": 3600, "distance": 0.0,
+ "average_heartrate": 118.4, "max_heartrate": 161, "calories": 412.0,
+ "device_name": "Garmin Forerunner 265", "description": "", "has_heartrate": true}

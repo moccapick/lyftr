@@ -19,6 +19,7 @@ services:
     image: lyftr-frontend:local
     ports: !override
       - "127.0.0.1:${LOCAL_PORT:-8080}:80"   # kun lokal tilgang; alt annet via Tailscale
+      - "127.0.0.1:8090:8090"                 # strava-mottakeren (deler nettverk med frontend)
 
   tailscale:
     image: tailscale/tailscale:latest
@@ -41,5 +42,23 @@ services:
         until [ -S /var/run/tailscale/tailscaled.sock ]; do sleep 0.5; done
         tailscale up --hostname=lyftr --reset ${TS_AUTHKEY:+--authkey=$TS_AUTHKEY}
         tailscale serve --bg --https=443 http://127.0.0.1:80
+        tailscale funnel --bg --https=8443 http://127.0.0.1:8090 || echo "Funnel ikke aktivert i tailnettet (kun nødvendig for Strava-webhook)"
         echo "Lyftr via Tailscale: https://$(tailscale status --json | sed -n 's/.*"DNSName": *"\([^"]*\)\.".*/\1/p' | head -1)"
         wait
+
+  strava:
+    build: ./integrations/strava
+    image: lyftr-strava:local
+    restart: unless-stopped
+    network_mode: service:frontend    # lytter på 127.0.0.1:8090 i samme nettverk som tailscale
+    depends_on:
+      frontend:
+        condition: service_started
+    environment:
+      - STRAVA_CLIENT_ID=${STRAVA_CLIENT_ID:-}
+      - STRAVA_CLIENT_SECRET=${STRAVA_CLIENT_SECRET:-}
+      - STRAVA_VERIFY_TOKEN=${STRAVA_VERIFY_TOKEN:-}
+      - STRAVA_PUBLIC_URL=${STRAVA_PUBLIC_URL:-}
+      - STRAVA_FIXTURE_DIR=${STRAVA_FIXTURE_DIR:-}   # sett til /app/fixtures for test uten Strava
+    volumes:
+      - ./data:/app/data

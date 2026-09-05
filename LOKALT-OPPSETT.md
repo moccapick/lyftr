@@ -53,3 +53,17 @@ Vekt går inn i Lyftr med Garmins tidsstempel (dedupe på minutt og dag+vekt). F
 beinmasse, vann og BMI lagres i `data/garmin_body.json` og vises i Obsidian-notatene under `Vekt/`.
 Nattlig: `scripts/nightly.sh` (launchd 23:30) kjører Garmin-import og deretter Obsidian-synk. Logg: `logs/nightly.log`.
 Feilsøking: `--debug` lagrer rå Garmin-respons i `data/`.
+
+## Strava-webhook (Garmin-økt → puls/kalorier i Obsidian-notatet)
+Container `strava` (`integrations/strava/server.py`, port 8090, deler nettverk med frontend). Offentlig via
+Tailscale Funnel på **8443**; port 443 (Lyftr-UI) forblir kun i tailnettet.
+1. Garmin Connect → Innstillinger → Tilkoblede apper → Strava: slå på automatisk opplasting.
+2. Aktiver Funnel i tailnettet (lenken står i `docker compose logs tailscale` hvis den mangler).
+3. Opprett API-app på https://www.strava.com/settings/api med Authorization Callback Domain
+   `lyftr.tailb952f7.ts.net`. Legg `STRAVA_CLIENT_ID` og `STRAVA_CLIENT_SECRET` i `.env`, `docker compose up -d strava`.
+4. Åpne https://lyftr.tailb952f7.ts.net:8443/auth og godkjenn (tokens → `data/strava_tokens.json`).
+5. `docker compose exec strava python server.py subscribe` (Strava validerer `/webhook` med verify-token).
+Hendelser skrives til `data/strava_activities.json`; launchd-agenten `no.danieldahl.lyftr-strava-watch`
+kjører Obsidian-synk på filendring. Aktiviteten matches mot Lyftr-økt startet innen 3 timer, ellers får den
+egen note `… (Garmin).md`. Test uten Strava: sett `STRAVA_FIXTURE_DIR=/app/fixtures` i `.env` og POST en
+hendelse med `object_id` 1234567890 til http://127.0.0.1:8090/webhook.
