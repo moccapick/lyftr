@@ -19,7 +19,6 @@ services:
     image: lyftr-frontend:local
     ports: !override
       - "127.0.0.1:${LOCAL_PORT:-8080}:80"   # kun lokal tilgang; alt annet via Tailscale
-      - "127.0.0.1:8090:8090"                 # strava-mottakeren (deler nettverk med frontend)
 
   tailscale:
     image: tailscale/tailscale:latest
@@ -42,7 +41,6 @@ services:
         until [ -S /var/run/tailscale/tailscaled.sock ]; do sleep 0.5; done
         tailscale up --hostname=lyftr --reset ${TS_AUTHKEY:+--authkey=$TS_AUTHKEY}
         tailscale serve --bg --https=443 http://127.0.0.1:80
-        tailscale funnel --bg --https=8443 http://127.0.0.1:8090 || echo "Funnel ikke aktivert i tailnettet (kun nødvendig for Strava-webhook)"
         echo "Lyftr via Tailscale: https://$(tailscale status --json | sed -n 's/.*"DNSName": *"\([^"]*\)\.".*/\1/p' | head -1)"
         wait
 
@@ -50,10 +48,8 @@ services:
     build: ./integrations/strava
     image: lyftr-strava:local
     restart: unless-stopped
-    network_mode: service:frontend    # lytter på 127.0.0.1:8090 i samme nettverk som tailscale
-    depends_on:
-      frontend:
-        condition: service_started
+    ports:
+      - "127.0.0.1:8090:8090"           # lokal test
     environment:
       - STRAVA_CLIENT_ID=${STRAVA_CLIENT_ID:-}
       - STRAVA_CLIENT_SECRET=${STRAVA_CLIENT_SECRET:-}
@@ -62,3 +58,26 @@ services:
       - STRAVA_FIXTURE_DIR=${STRAVA_FIXTURE_DIR:-}   # sett til /app/fixtures for test uten Strava
     volumes:
       - ./data:/app/data
+
+  # Egen Tailscale-node «lyftr-hook» kun for webhooken: Funnel på 443 (Strava godtar ikke
+  # egen port i callback-URL), mens lyftr-noden med UI-et forblir tailnet-only.
+  tailscale-hook:
+    image: tailscale/tailscale:latest
+    restart: unless-stopped
+    network_mode: service:strava
+    depends_on:
+      strava:
+        condition: service_started
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY:-}
+    volumes:
+      - ./tailscale-hook-state:/var/lib/tailscale
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        tailscaled --state=/var/lib/tailscale/tailscaled.state --tun=userspace-networking &
+        until [ -S /var/run/tailscale/tailscaled.sock ]; do sleep 0.5; done
+        tailscale up --hostname=lyftr-hook --reset ${TS_AUTHKEY:+--authkey=$TS_AUTHKEY}
+        tailscale funnel --bg --https=443 http://127.0.0.1:8090 || echo "Funnel feilet – se lenke over"
+        echo "Strava-webhook via Funnel: https://$(tailscale status --json | sed -n 's/.*"DNSName": *"\([^"]*\)\.".*/\1/p' | head -1)/webhook"
+        wait
