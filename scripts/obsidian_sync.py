@@ -36,6 +36,7 @@ DEFAULT_VAULT_DIR = (
 )
 TZ = ZoneInfo("Europe/Oslo")
 MARKER = "<!-- lyftr:slutt -->"
+HUB_LINK = "Del av [[Trening/Oversikt|Trening – oversikt]]"  # kobler notatet inn i Obsidian-grafen
 GARMIN_BODY = Path(os.environ.get("LYFTR_GARMIN_BODY", HOME / "lyftr" / "data" / "garmin_body.json"))  # skrives av garmin_import.py
 STRAVA_ACTS = Path(os.environ.get("LYFTR_STRAVA_ACTS", HOME / "lyftr" / "data" / "strava_activities.json"))  # skrives av integrations/strava
 MATCH_WINDOW = dt.timedelta(hours=3)   # Garmin-økt og Lyftr-økt regnes som samme hvis start er innenfor dette
@@ -502,7 +503,7 @@ class Writer:
             existing = path.read_text(encoding="utf-8")
             if MARKER in existing:
                 tail = existing.split(MARKER, 1)[1]
-        content = generated.rstrip("\n") + "\n\n" + MARKER + (tail if tail else "\n")
+        content = generated.rstrip("\n") + "\n\n" + HUB_LINK + "\n\n" + MARKER + (tail if tail else "\n")
         if path.exists() and path.read_text(encoding="utf-8") == content:
             self.unchanged += 1
             return
